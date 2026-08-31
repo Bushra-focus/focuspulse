@@ -1,6 +1,8 @@
 import streamlit as st
 import time
 import random
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.title("FocusPulse 🧠")
 st.write("اختبار تجريبي لقياس تغيرات الأداء المرتبطة بالانتباه")
@@ -13,6 +15,26 @@ st.write(
     "حاولي الإجابة بأسرع ما تستطيعين وبدقة."
 )
 
+# الاتصال بـ Google Sheets
+try:
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+
+    client = gspread.authorize(credentials)
+
+    sheet = client.open("FocusPulse Results").sheet1
+
+except Exception:
+    sheet = None
+
+
 if "started" not in st.session_state:
     st.session_state.started = False
 
@@ -21,6 +43,7 @@ if "results" not in st.session_state:
 
 if "question_start" not in st.session_state:
     st.session_state.question_start = None
+
 
 if st.button("ابدأ التجربة"):
     st.session_state.started = True
@@ -80,7 +103,7 @@ if st.session_state.started:
         (
             "إذا كان اليوم الثلاثاء، فما اليوم بعد 45 يومًا؟",
             ["الأربعاء", "الخميس", "الجمعة", "السبت"],
-            "الخميس"
+            "الجمعة"
         ),
     ]
 
@@ -106,6 +129,7 @@ if st.session_state.started:
 
             if answer is None:
                 st.warning("اختاري إجابة أولًا قبل الانتقال للسؤال التالي.")
+
             else:
 
                 reaction_time = (
@@ -115,6 +139,9 @@ if st.session_state.started:
                 correct_answer = answer == correct
 
                 st.session_state.results.append({
+                    "question": question,
+                    "answer": answer,
+                    "correct_answer": correct,
                     "reaction_time": reaction_time,
                     "correct": correct_answer
                 })
@@ -136,13 +163,33 @@ if st.session_state.started:
             for x in st.session_state.results
         )
 
+        correct_count = len(st.session_state.results) - errors
+
         average_time = sum(times) / len(times)
 
-        st.write(
-            f"متوسط زمن الإجابة: {average_time:.2f} ثانية"
-        )
+        score = correct_count / len(questions) * 100
 
+        st.write(f"النتيجة: {score:.0f}%")
+        st.write(f"متوسط زمن الإجابة: {average_time:.2f} ثانية")
+        st.write(f"عدد الإجابات الصحيحة: {correct_count}")
         st.write(f"عدد الأخطاء: {errors}")
+
+        # حفظ النتيجة في Google Sheets
+        if sheet is not None:
+
+            try:
+                sheet.append_row([
+                    time.strftime("%Y-%m-%d %H:%M:%S"),
+                    score,
+                    average_time,
+                    correct_count,
+                    errors
+                ])
+
+                st.success("تم حفظ نتيجتك بنجاح ✅")
+
+            except Exception:
+                st.warning("تعذر حفظ النتيجة حاليًا.")
 
         if average_time > 4 or errors >= 3:
             st.warning(
