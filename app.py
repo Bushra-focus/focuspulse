@@ -1,21 +1,28 @@
 import streamlit as st
 import time
-import random
 import gspread
 from google.oauth2.service_account import Credentials
+
+
+# =========================
+# إعداد الصفحة
+# =========================
+
+st.set_page_config(
+    page_title="FocusPulse 🧠",
+    page_icon="🧠"
+)
 
 st.title("FocusPulse 🧠")
 st.write("اختبار تجريبي لقياس تغيرات الأداء المرتبطة بالانتباه")
 
 st.divider()
 
-st.subheader("قبل أن نبدأ")
-st.write(
-    "اضغطي على الزر وابدئي الاختبار. "
-    "حاولي الإجابة بأسرع ما تستطيعين وبدقة."
-)
 
+# =========================
 # الاتصال بـ Google Sheets
+# =========================
+
 try:
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -35,6 +42,13 @@ except Exception:
     sheet = None
 
 
+# =========================
+# بيانات المشارك
+# =========================
+
+if "name" not in st.session_state:
+    st.session_state.name = ""
+
 if "started" not in st.session_state:
     st.session_state.started = False
 
@@ -45,12 +59,40 @@ if "question_start" not in st.session_state:
     st.session_state.question_start = None
 
 
-if st.button("ابدأ التجربة"):
-    st.session_state.started = True
-    st.session_state.results = []
-    st.session_state.question_start = None
-    st.rerun()
+# =========================
+# قبل البداية
+# =========================
 
+if not st.session_state.started:
+
+    st.subheader("قبل أن نبدأ")
+
+    st.write(
+        "اكتبي اسم المشارك، ثم اضغطي على زر بدء الاختبار."
+    )
+
+    name = st.text_input(
+        "اسم المشارك:",
+        placeholder="اكتبي الاسم هنا"
+    )
+
+    if st.button("ابدأ التجربة 🧠"):
+
+        if name.strip() == "":
+            st.warning("اكتبي اسم المشارك أولًا.")
+
+        else:
+            st.session_state.name = name.strip()
+            st.session_state.started = True
+            st.session_state.results = []
+            st.session_state.question_start = None
+
+            st.rerun()
+
+
+# =========================
+# الأسئلة
+# =========================
 
 if st.session_state.started:
 
@@ -107,15 +149,24 @@ if st.session_state.started:
         ),
     ]
 
+
+    # =========================
+    # عرض الأسئلة
+    # =========================
+
     if len(st.session_state.results) < len(questions):
 
         i = len(st.session_state.results)
+
         question, options, correct = questions[i]
 
         if st.session_state.question_start is None:
             st.session_state.question_start = time.time()
 
-        st.subheader(f"السؤال {i + 1} من {len(questions)}")
+        st.subheader(
+            f"السؤال {i + 1} من {len(questions)}"
+        )
+
         st.write(question)
 
         answer = st.radio(
@@ -125,15 +176,19 @@ if st.session_state.started:
             key=f"question_{i}"
         )
 
-        if st.button("التالي"):
+        if st.button("التالي ➡️"):
 
             if answer is None:
-                st.warning("اختاري إجابة أولًا قبل الانتقال للسؤال التالي.")
+
+                st.warning(
+                    "اختاري إجابة أولًا قبل الانتقال للسؤال التالي."
+                )
 
             else:
 
                 reaction_time = (
-                    time.time() - st.session_state.question_start
+                    time.time()
+                    - st.session_state.question_start
                 )
 
                 correct_answer = answer == correct
@@ -147,7 +202,13 @@ if st.session_state.started:
                 })
 
                 st.session_state.question_start = None
+
                 st.rerun()
+
+
+    # =========================
+    # النتيجة النهائية
+    # =========================
 
     else:
 
@@ -163,39 +224,103 @@ if st.session_state.started:
             for x in st.session_state.results
         )
 
-        correct_count = len(st.session_state.results) - errors
+        correct_count = (
+            len(st.session_state.results) - errors
+        )
 
-        average_time = sum(times) / len(times)
+        average_time = (
+            sum(times) / len(times)
+        )
 
-        score = correct_count / len(questions) * 100
+        score = (
+            correct_count
+            / len(questions)
+            * 100
+        )
 
-        st.write(f"النتيجة: {score:.0f}%")
-        st.write(f"متوسط زمن الإجابة: {average_time:.2f} ثانية")
-        st.write(f"عدد الإجابات الصحيحة: {correct_count}")
-        st.write(f"عدد الأخطاء: {errors}")
 
+        st.write(
+            f"👤 اسم المشارك: {st.session_state.name}"
+        )
+
+        st.write(
+            f"📊 النتيجة: {score:.0f}%"
+        )
+
+        st.write(
+            f"⏱️ متوسط زمن الإجابة: {average_time:.2f} ثانية"
+        )
+
+        st.write(
+            f"✅ عدد الإجابات الصحيحة: {correct_count}"
+        )
+
+        st.write(
+            f"❌ عدد الأخطاء: {errors}"
+        )
+
+
+        # =========================
         # حفظ النتيجة في Google Sheets
+        # =========================
+
         if sheet is not None:
 
             try:
+
                 sheet.append_row([
-                    time.strftime("%Y-%m-%d %H:%M:%S"),
-                    score,
-                    average_time,
+                    st.session_state.name,
+                    time.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                    round(score, 2),
+                    round(average_time, 2),
                     correct_count,
                     errors
                 ])
 
-                st.success("تم حفظ نتيجتك بنجاح ✅")
+                st.success(
+                    "تم حفظ نتيجة المشارك بنجاح في Google Sheets ✅"
+                )
 
             except Exception:
-                st.warning("تعذر حفظ النتيجة حاليًا.")
+
+                st.warning(
+                    "تعذر حفظ النتيجة في Google Sheets حاليًا."
+                )
+
+        else:
+
+            st.warning(
+                "لم يتم الاتصال بـ Google Sheets."
+            )
+
+
+        # =========================
+        # تقييم بسيط
+        # =========================
 
         if average_time > 4 or errors >= 3:
+
             st.warning(
                 "ظهر انخفاض في الأداء في هذه التجربة."
             )
+
         else:
+
             st.success(
                 "الأداء كان مستقرًا في هذه التجربة."
             )
+
+
+        # =========================
+        # إعادة الاختبار
+        # =========================
+
+        if st.button("إعادة الاختبار 🔄"):
+
+            st.session_state.started = False
+            st.session_state.results = []
+            st.session_state.question_start = None
+
+            st.rerun()
